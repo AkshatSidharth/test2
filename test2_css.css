@@ -1,0 +1,35 @@
+*{
+    padding: 0px;
+    margin: 0px;
+}
+#header2{
+    background-color: black;
+}
+
+#part1{
+float: left;
+}
+ 
+#part2{
+    float: right;
+}
+
+#container2{
+    content:"" ;
+    display: block;
+    clear: both;
+
+} 
+
+#propic1{
+    border-radius: 60%;
+    opacity: 0.9;
+}
+   
+.full-footer{
+    background-color:rgba(22, 16, 16, 0.8);
+    }
+.top_section{
+    background-color: rgb(144, 60, 223,0.6);
+
+    }
