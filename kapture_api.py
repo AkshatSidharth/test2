@@ -613,3 +613,50 @@ call_summary:
             print("Upload Recording URL response:", recording_response.json())
     except Exception as e:
         print(f"\nError: {e}")
+
+
+def customFunction3(phone_number: str):
+    """
+    Fetch all orders for a customer by phone number.
+
+    Returns a list of dicts with affiliate_id, cart_pid, and product_name,
+    which can be passed into get_cart_details().
+
+    Args:
+        phone_number: Customer mobile number.
+
+    Returns:
+        dict with 'orders' list and 'status', or 'status'/'error' on failure.
+    """
+    url = f"{BASE_URL}/ms/ticketcustomer/order/api/external/ORDER_LIST"
+    headers = {
+        "Content-Type": "application/json",
+        "3X-Secret-Key": SECRET_KEY
+    }
+    body = {
+        "phone": phone_number,
+        "email": "",
+        "customerId": "",
+        "otherDetail": {}
+    }
+    try:
+        response = requests.post(url, headers=headers, json=body, timeout=30)
+        response.raise_for_status()
+        resp_json = response.json()
+        raw_orders = resp_json.get("cart_items", [])
+        orders = []
+        for order in raw_orders:
+            orders.append({
+                "affiliate_id": order.get("affiliate_id"),
+                "cart_pid": order.get("cart_pid"),
+                "product_name": order.get("product_info", {}).get("product_name"),
+            })
+        return {
+            "orders": orders,
+            "status": "success"
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
