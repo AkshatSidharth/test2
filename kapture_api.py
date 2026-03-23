@@ -1,10 +1,140 @@
 import requests
+import traceback
+import ast
 
 BASE_URL = "https://wakefituat.kapturecrm.com"
 
 SECRET_KEY = "Kapture c1f8b2d03a4e4b6c9d5f7c1e2f8a3b6d"
 CREATE_TICKET_AUTH = "Basic eGxpemxlcGRhc21jd3J3d3gzcm55em0xeXdtZW90c20wN3EybTZuNHN6azV1aXlleWY="
 UPDATE_TICKET_AUTH = "Basic MnAycHFwMjY1ZHpraWM0dXN6dHZiMW14a2RlNXQ3aHY5dzZ3OHIzazR4OHF5MWY2b2Q="
+
+
+def customFunction(phone: str, conversation_id: str, request_json: dict):
+    """
+    Pre-call entry point: calls the Customer API, then creates a Kapture ticket.
+
+    Args:
+        phone: Customer phone number (may be overridden from conversation_context).
+        conversation_id: Conversation ID (may be overridden from conversation_context).
+        request_json: Full request dict containing 'conversation_context' as a string.
+
+    Returns:
+        dict with 'conversation_id' and 'ticket_id'.
+    """
+    print(phone)
+    conversation_context_str = request_json.get("conversation_context")
+    conversation_context = ast.literal_eval(conversation_context_str)
+    print(conversation_id)
+
+    try:
+        if not conversation_id:
+            conversation_id = conversation_context.get("conversation_id") or ""
+        print(f"conversation_id: {conversation_id}")
+        if not phone:
+            phone = conversation_context.get("data", {}).get("from_phone") or ""
+        print(f"phone: {phone}")
+    except Exception as e:
+        print(f"\nError: {e}; \nTraceback: {traceback.format_exc()}")
+
+    # FIX 2 (order) + FIX 3 (headers): Customer API is the pre-call step — call it first.
+    # Only Content-Type is required; no 3X-Secret-Key or Authorization for this endpoint.
+    customer_url = f"{BASE_URL}/ms/ticketcustomer/order/api/external/CUSTOMER"
+    customer_headers = {"Content-Type": "application/json"}
+    customer_payload = {
+        "phone": phone,
+        "email": "",
+        "customerId": "",
+        "otherDetail": {}  # FIX 5: removed misleading `"" or {}`
+    }
+    try:
+        customer_response = requests.post(customer_url, headers=customer_headers, json=customer_payload, timeout=10)
+        customer_response.raise_for_status()
+        try:
+            customer_data = customer_response.json()  # FIX 4: store result in a distinct variable
+        except ValueError:
+            customer_data = customer_response.text
+        print(f"CustomerAPI response: {customer_data}")
+    except Exception as e:
+        print("Error:", str(e))
+        raise
+
+    try:
+        ticket_payload = [
+            {
+                "title": "Voicebot",
+                "ticket_details": "Voicebot_ticket",
+                "due_date": "",
+                "customer_id": "",
+                "customer_name": "customer_name",
+                "phone": phone,
+                "email_id": "",
+                "testing_object": [
+                    {
+                        "testing_2": "",
+                        "testing_field_-1_": ""
+                    }
+                ],
+                "resolution_disposition": [
+                    {
+                        "resolution_l1": "",
+                        "resolution_l2": "",
+                        "request_denied": ""
+                    }
+                ],
+                "internal_order_details": [
+                    {
+                        "warranty": "",
+                        "issue_category_1": "",
+                        "issue_category_2": "",
+                        "order_id": "order_id",
+                        "product": "",
+                        "type_of_logisitics": "",
+                        "warehouse/3pl": "",
+                        "order_source": "",
+                        "affiliate_name": "",
+                        "request_denied": "",
+                        "issue_type_(cet_routing)": "",
+                        "product_type": "",
+                        "product_category": "",
+                        "request_accepted": "",
+                        "\\": "",
+                        "odr": "",
+                        "affiliate_id": "",
+                        "issue_type_(itp_routing)": ""
+                    }
+                ],
+                "issue_category_details": [
+                    {
+                        "issue_category_1": "",
+                        "issue_category_2": ""
+                    }
+                ]
+            }
+        ]
+        ticket_url = f"{BASE_URL}/add-ticket-from-other-source.html/v.2.0"
+        ticket_response = requests.post(
+            ticket_url,
+            json=ticket_payload,
+            headers={
+                "Authorization": CREATE_TICKET_AUTH,
+                "Content-Type": "application/json"
+            },
+            timeout=10
+        )
+        ticket_response.raise_for_status()
+        ticket_data = ticket_response.json()
+        print("Ticket Creation Response:", ticket_data)
+        ticket_id = ticket_data.get("ticket_id")
+        print("conv:", conversation_id)
+        print("ticket_id:", ticket_id)
+    except Exception as e:
+        print("Error:", str(e))
+        raise
+
+    return {
+        "conversation_id": conversation_id,
+        "ticket_id": ticket_id
+    }
 
 
 def create_customer(phone: str, email: str = "", customer_id: str = "", other_detail: dict = None):
