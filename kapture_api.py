@@ -660,3 +660,44 @@ def customFunction3(phone_number: str):
             "status": "error",
             "error": str(e)
         }
+
+
+def customFunction4(affiliate_id, cart_id):
+    """
+    Fetch full details for a specific order (cart).
+
+    Args:
+        affiliate_id: affiliate_id from the order list (e.g. 0).
+        cart_id: cart_pid from the order list (e.g. 7101838).
+
+    Returns:
+        dict with 'cartDetails' and 'status', or 'status'/'error' on failure.
+    """
+    # FIX 1: removed unused `import json` — requests handles JSON natively
+    url = f"{BASE_URL}/ms/ticketcustomer/order/api/external/CART_DETAILS_API"
+    headers = {
+        "Content-Type": "application/json",
+        "3X-Secret-Key": SECRET_KEY
+    }
+    body = {
+        "phone": "",
+        "email": "",
+        "customerId": "",
+        "otherDetail": {
+            "AFFILIATEID": str(affiliate_id),
+            "CARTID": str(cart_id)
+        }
+    }
+    try:
+        response = requests.post(url, headers=headers, json=body, timeout=30)
+        response.raise_for_status()
+        resp_json = response.json()
+        return {
+            "cartDetails": resp_json,
+            "status": "success"
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
