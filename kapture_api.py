@@ -1,6 +1,12 @@
 import requests
 import traceback
 import ast
+import json
+import time
+from datetime import datetime
+from openai import OpenAI
+from pymongo import MongoClient
+from pydantic import BaseModel, Field
 
 BASE_URL = "https://wakefituat.kapturecrm.com"
 
@@ -376,3 +382,234 @@ def update_ticket(
     response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()
     return response.json()
+
+
+def customFunction2(ticket_id: str, conversation_id: str, api_key: str, mongo_url: str):
+    """
+    Post-call handler: summarises the conversation via OpenAI, updates the Kapture
+    ticket with the summary, and uploads the call recording URL.
+
+    Args:
+        ticket_id: Kapture ticket ID to update (required).
+        conversation_id: Conversation ID used to look up MongoDB records.
+        api_key: OpenAI API key.
+        mongo_url: MongoDB connection string.
+    """
+    if not ticket_id:
+        return {"error": "ticket_id cannot be empty"}
+
+    # FIX 1: removed self-assignment `API_KEY = API_KEY` / `MONGO_URL = MONGO_URL`
+    # (NameError); values are now passed as parameters.
+    print("Ticketid:", ticket_id)
+    print("Conversationid:", conversation_id)
+
+    # === connect to MongoDB ===
+    try:
+        conn = MongoClient(mongo_url, maxIdleTimeMS=30000)
+        db = conn["vb_platform"]
+        be_tp = db["be_tp"]
+        conversation_memory = db["conversation_memory_redefined"]
+    except Exception as e:
+        print(f"Error occured during connecting to DB; \nTraceback: {traceback.format_exc()}")
+        return {"error": "Error occured during connecting to DB!"}
+
+    # FIX 2: guard against find_one returning None
+    record = conversation_memory.find_one({"conversation_id": conversation_id})
+    if not record:
+        print("\nConversation record not found!")
+        return {"error": "conversation history not found!"}
+
+    conversation_history = record.get("conversation_history", "")
+    if not conversation_history:
+        print("\nConversation history not found!")
+        return {"error": "conversation history not found!"}
+
+    formatted_conversation = ""
+    for entry in conversation_history:
+        role = entry['role'].capitalize()
+        if role == "Agent":
+            role = "Bot"
+        content = entry['content']
+        formatted_conversation += f"{role}: {content}\n"
+
+    # === fetch recording URL with retries ===
+    recording_url = ""
+    max_retries = 10
+    sleep_seconds = 15
+    for attempt in range(max_retries):
+        be_tp_obj = be_tp.find_one({"conversation_id": conversation_id})
+        # FIX 3: guard against find_one returning None inside the retry loop
+        if not be_tp_obj:
+            print(f"\nbe_tp record not found. Retry {attempt+1}/{max_retries} ...")
+            time.sleep(sleep_seconds)
+            continue
+        recording_url = be_tp_obj.get("recording_url", "")
+        if recording_url and recording_url.strip() != "":
+            print(f"\nRecording URL fetched successfully on attempt {attempt+1}: {recording_url}")
+            break
+        print(f"\nRecording URL empty. Retry {attempt+1}/{max_retries} ...")
+        time.sleep(sleep_seconds)
+
+    # FIX 3 (continued): guard after loop as well
+    be_tp_obj = be_tp.find_one({"conversation_id": conversation_id})
+    if not be_tp_obj:
+        return {"error": "be_tp record not found for conversation_id"}
+
+    client_id = be_tp_obj.get("client_id", "")
+    config_id = be_tp_obj.get("config_id", "")
+    to_phone = be_tp_obj.get("to_phone", "")
+    from_phone = be_tp_obj.get("from_phone", "")
+    start_time = be_tp_obj.get("start_time", "")
+    end_time = be_tp_obj.get("end_time", "")
+    call_status = be_tp_obj.get("status", "")
+
+    try:
+        print("\nstart_time: ", start_time, ", end_time: ", end_time)
+        format_string = "%Y-%m-%d %H:%M:%S"
+        if start_time and end_time:
+            start_time_obj = datetime.strptime(start_time, format_string)
+            end_time_obj = datetime.strptime(end_time, format_string)
+            duration = (end_time_obj - start_time_obj).total_seconds()
+            print("\nDuration: ", duration)
+        else:
+            duration = 1
+            print("\nMissing start_time or end_time")
+    except Exception as e:
+        print("\nSome error occured during calculating duration")
+        duration = 1
+
+    # === OpenAI call ===
+    class ResponseModel(BaseModel):
+        call_summary: str = Field("NA", description="A concise summary of the call, highlighting the main points of the conversation in 2 to 3 lines.")
+
+    prompt = f"""
+You are a professional content extractor.
+Your task is to extract structured insights from the given customer-bot conversation.
+### Output Fields (STRICT):
+- call_summary
+call_summary:
+- 2-3 concise lines
+- Clearly describe the customer's issue and the bot's response
+### Conversation:
+{formatted_conversation}
+"""
+    openai_client = OpenAI(api_key=api_key)
+    try:
+        oai_response = openai_client.beta.chat.completions.parse(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a structured information extractor."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format=ResponseModel,
+            temperature=0.2
+        )
+        openai_output = json.loads(oai_response.choices[0].message.content)
+        print("\nOpenAI response:\n", openai_output)
+    except json.JSONDecodeError:
+        raise ValueError("Failed to parse GPT output")
+    except Exception as e:
+        raise RuntimeError(f"OpenAI API call failed: {str(e)}")
+
+    # === update ticket ===
+    # FIX 4: removed trailing `?=null` from URL
+    update_url = f"{BASE_URL}/update-ticket-from-other-source.html/v.2.0"
+    update_headers = {
+        "Content-Type": "application/json",
+        "Authorization": UPDATE_TICKET_AUTH
+    }
+    update_body = [
+        {
+            "comment": "voicebot-ticket",
+            "ticket_id": ticket_id,
+            "callback_time": "",
+            "sub_status": "RS",
+            "queue": "",
+            "disposition": "",
+            "testing_object": [
+                {
+                    "testing_2": "",
+                    "testing_field_-1_": ""
+                }
+            ],
+            "resolution_disposition": [
+                {
+                    "resolution_l1": openai_output.get("call_summary"),
+                    "resolution_l2": "",
+                    "request_denied": ""
+                }
+            ],
+            "internal_order_details": [
+                {
+                    "warranty": "",
+                    "issue_category_1": "",
+                    "issue_category_2": "",
+                    "order_id": "",
+                    "product": "",
+                    "type_of_logisitics": "",
+                    "warehouse/3pl": "",
+                    "order_source": "",
+                    "affiliate_name": "",
+                    "request_denied": "",
+                    "issue_type_(cet_routing)": "",
+                    "product_type": "",
+                    "product_category": "",
+                    "request_accepted": "",
+                    "\\": "",
+                    "odr": "",
+                    "affiliate_id": "",
+                    "issue_type_(itp_routing)": ""
+                }
+            ],
+            "issue_category_details": [
+                {
+                    "issue_category_1": "",
+                    "issue_category_2": ""
+                }
+            ]
+        }
+    ]
+    print(f"\nTicket payload: {update_body}")
+    update_response = requests.post(update_url, headers=update_headers, json=update_body)
+    print("\nSTATUS:", update_response.status_code)
+    try:
+        print("RESPONSE:", update_response.json())
+    except Exception:
+        print("RAW RESPONSE:", update_response.text)
+
+    # === upload recording URL ===
+    try:
+        emp_code = "VoiceBot Inbound"
+        recording_upload_url = "https://wakefituat.kapturecrm.com/ms/ai-service/voice-bot/callback"
+        recording_upload_auth = "Basic SUl3VFBJNm1tZ09KSjNadlhMaFVTZEVjMUQxMmtj"
+        callback_headers = {
+            "Content-Type": "application/json",
+            "Authorization": recording_upload_auth
+        }
+        callback_payload = json.dumps({
+            "ticketId": ticket_id,
+            "ucid": f"@@{client_id}@@{config_id}@@{conversation_id}@@",
+            "recording": recording_url,
+            "duration": str(duration),
+            "agentId": emp_code,
+            "dialStatus": call_status,
+            "from": from_phone,
+            "to": to_phone,
+            "callType": "Inbound",
+            "callAgent": "VoiceBot",
+        })
+        print("\nPOSTING RECORDING URL")
+        recording_response = requests.post(
+            recording_upload_url,
+            headers=callback_headers,
+            data=callback_payload,
+            timeout=10
+        )
+        if recording_response.status_code == 200:
+            print("\nUploading voice recording url: Success")
+            print("Upload Recording URL response:", recording_response.json())
+        else:
+            print("\nUploading voice recording url: Failed")
+            print("Upload Recording URL response:", recording_response.json())
+    except Exception as e:
+        print(f"\nError: {e}")
