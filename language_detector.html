@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Tamil vs English Detector</title>
+    <link rel="stylesheet" href="forbg2/bootstrap.min.css">
+    <link rel="stylesheet" href="forbg2/fontawesome-free-5.13.0-web/css/all.css">
+    <link rel="stylesheet" type="text/css" href="test2_css.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js" integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI" crossorigin="anonymous"></script>
+    <style>
+        .detector-card {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        .detector-card h2 {
+            color: #fff;
+            font-size: 1.6rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .detector-card label {
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 500;
+            margin-bottom: 0.4rem;
+            display: block;
+        }
+
+        #text-input {
+            width: 100%;
+            min-height: 130px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #fff;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #text-input::placeholder {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        #text-input:focus {
+            border-color: rgba(144, 60, 223, 0.9);
+        }
+
+        #detect-btn {
+            background: rgb(144, 60, 223);
+            border: none;
+            color: #fff;
+            padding: 0.6rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: background 0.2s, opacity 0.2s;
+        }
+
+        #detect-btn:hover {
+            background: rgb(120, 40, 200);
+        }
+
+        #detect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #results {
+            margin-top: 2rem;
+            display: none;
+        }
+
+        .result-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .result-item {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 0.75rem 1.2rem;
+            flex: 1 1 200px;
+        }
+
+        .result-item .label {
+            color: rgba(255, 255, 255, 0.55);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.3rem;
+        }
+
+        .result-item .value {
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 500;
+            word-break: break-all;
+        }
+
+        .result-item .value.highlight {
+            color: rgb(190, 130, 255);
+            font-size: 1.15rem;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 0.6rem 1rem;
+            color: #c8ffc8;
+            font-family: monospace;
+            font-size: 0.95rem;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+
+        .badge-tamil {
+            background: rgb(144, 60, 223);
+            color: #fff;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+        }
+
+        .badge-english {
+            background: #0d7377;
+            color: #fff;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+        }
+
+        #error-box {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid rgba(220, 53, 69, 0.5);
+            border-radius: 8px;
+            color: #f5c6cb;
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        #spinner {
+            display: none;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid" id="wrapper">
+        <header>
+            <div id="header2">
+                <div class="container-fluid">
+                    <nav class="navbar navbar-dark navbar-expand-lg" style="background-color:#0c0f0f; color:rgba(255,255,255,0.788)">
+                        <button class="navbar-toggler" data-toggle="collapse" data-target="#navbarToggler" type="button">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <div class="collapse navbar-collapse" id="navbarToggler">
+                            <ul class="nav navbar-nav navbar-center" id="nav1">
+                                <li class="nav-item"><a href="index.html" class="nav-link">About</a></li>
+                                <li class="nav-item"><a href="#" class="nav-link">Work</a></li>
+                                <li class="nav-item"><a href="#" class="nav-link">Contact</a></li>
+                                <li class="nav-item"><a href="#" class="nav-link">Blog</a></li>
+                                <li class="nav-item active"><a href="language_detector.html" class="nav-link">Language Detector</a></li>
+                            </ul>
+                        </div>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        <section class="top_section pt-4 pb-5">
+            <div class="container">
+                <div class="detector-card">
+                    <h2>&#127760; Tamil vs English Detector</h2>
+
+                    <label for="text-input">Enter text</label>
+                    <textarea id="text-input" placeholder="வணக்கம் / epdi iruka / ஹலோ"></textarea>
+
+                    <br>
+                    <button id="detect-btn" onclick="detect()">Process</button>
+
+                    <div id="spinner"><i class="fas fa-circle-notch fa-spin"></i> Detecting...</div>
+                    <div id="error-box"></div>
+
+                    <div id="results">
+                        <hr style="border-color: rgba(255,255,255,0.15); margin: 1.5rem 0;">
+                        <h5 style="color:#fff; margin-bottom:1rem;">Results</h5>
+
+                        <div class="result-row">
+                            <div class="result-item">
+                                <div class="label">Final Label</div>
+                                <div class="value highlight" id="r-label">—</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="label">Detected Code</div>
+                                <div class="value" id="r-code">—</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="label">Confidence</div>
+                                <div class="value" id="r-confidence">—</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="label">Tamil Script Found</div>
+                                <div class="value" id="r-script">—</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom:1rem;">
+                            <div class="label" style="color:rgba(255,255,255,0.55); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Input</div>
+                            <div class="code-block" id="r-input">—</div>
+                        </div>
+
+                        <div id="translit-section" style="margin-bottom:1rem; display:none;">
+                            <div class="label" style="color:rgba(255,255,255,0.55); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Transliteration</div>
+                            <div class="code-block" id="r-translit">—</div>
+                        </div>
+
+                        <div>
+                            <div class="label" style="color:rgba(255,255,255,0.55); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Text Sent to API</div>
+                            <div class="code-block" id="r-api-input">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="full-footer">
+            <div class="container-fluid bottom-footer text-center pt-2">
+                <div class="row">
+                    <div class="col-12">
+                        <p>Copyrights @ 2020 - All rights reserved</p>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="forbg2/bootstrap.bundle.min.js"></script>
+    <script src="forbg2/bootstrap.min.js"></script>
+    <script>
+        const BACKEND_URL = "http://localhost:5000/detect";
+
+        async function detect() {
+            const text = document.getElementById("text-input").value.trim();
+            const btn = document.getElementById("detect-btn");
+            const spinner = document.getElementById("spinner");
+            const errorBox = document.getElementById("error-box");
+            const results = document.getElementById("results");
+
+            errorBox.style.display = "none";
+            results.style.display = "none";
+
+            if (!text) {
+                errorBox.textContent = "Please enter some text first.";
+                errorBox.style.display = "block";
+                return;
+            }
+
+            btn.disabled = true;
+            spinner.style.display = "block";
+
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || "Backend returned an error.");
+                }
+
+                document.getElementById("r-label").textContent = data.final_label;
+                document.getElementById("r-code").textContent = data.detected_code;
+                document.getElementById("r-confidence").textContent = data.confidence.toFixed(4);
+                document.getElementById("r-script").textContent = data.tamil_script ? "Yes" : "No";
+                document.getElementById("r-input").textContent = text;
+                document.getElementById("r-api-input").textContent = data.api_input;
+
+                const translitSection = document.getElementById("translit-section");
+                if (data.transliteration) {
+                    document.getElementById("r-translit").textContent = data.transliteration;
+                    translitSection.style.display = "block";
+                } else {
+                    translitSection.style.display = "none";
+                }
+
+                results.style.display = "block";
+
+            } catch (err) {
+                errorBox.textContent = "Error: " + err.message;
+                errorBox.style.display = "block";
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = "none";
+            }
+        }
+
+        document.getElementById("text-input").addEventListener("keydown", function (e) {
+            if (e.ctrlKey && e.key === "Enter") detect();
+        });
+    </script>
+</body>
+
+</html>
